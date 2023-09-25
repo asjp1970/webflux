@@ -1,0 +1,4 @@
+service:
+  remote:
+    baseUrl: "https://4w46m.wiremockapi.cloud"
+    port: 8080

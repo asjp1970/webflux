@@ -1,0 +1,4 @@
+service:
+  remote:
+    baseUrl: "https://localhost"
+    port: 8066
