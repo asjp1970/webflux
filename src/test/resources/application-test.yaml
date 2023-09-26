@@ -1,4 +1,11 @@
 service:
   remote:
     baseUrl: "https://localhost"
-    port: 8066
+    httpsPort: 8473
+logging:
+  level:
+    reactor:
+      netty:
+        http:
+          client:
+            HttpClient: DEBUG

@@ -6,7 +6,6 @@ import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLException;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -23,20 +22,29 @@ import reactor.netty.tcp.SslProvider;
 public class GeneralConfiguration {
   @Value("${service.remote.baseUrl}")
   private String baseUrl;
-  @Value("${service.remote.port}")
-  private int port;
+
+  @Value("${service.remote.httpPort}")
+  private int httpPort;
+
+  @Value("${service.remote.httpsPort}")
+  private int httpsPort;
+
   public static final int TIMEOUT = 1000;
 
   @Bean("webClientNoSsl")
   public WebClient webClientWithTimeout() {
     HttpClient httpClient =
         HttpClient.create()
-            .baseUrl(baseUrl)
+            .baseUrl(String.format("%s:%d", baseUrl, httpPort))
+            .port(httpPort)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TIMEOUT)
             .doOnConnected(
-                conn ->
-                    conn.addHandlerLast(new ReadTimeoutHandler(TIMEOUT, TimeUnit.MILLISECONDS)));
-    // .wiretap(true);
+                conn -> conn.addHandlerLast(new ReadTimeoutHandler(TIMEOUT, TimeUnit.MILLISECONDS)))
+        /*
+        .wiretap(
+            "reactor.netty.http.client.HttpClient",
+            LogLevel.INFO,
+            AdvancedByteBufFormat.TEXTUAL)*/ ;
     return WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient)).build();
   }
 
@@ -46,15 +54,19 @@ public class GeneralConfiguration {
         SslContextBuilder.forClient().trustManager(InsecureTrustManagerFactory.INSTANCE).build();
     HttpClient httpClient =
         HttpClient.create()
-            .baseUrl(baseUrl).port(port)
+            .baseUrl(String.format("%s:%d", baseUrl, httpsPort))
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, TIMEOUT)
             .doOnConnected(
                 conn -> conn.addHandlerLast(new ReadTimeoutHandler(TIMEOUT, TimeUnit.MILLISECONDS)))
             .secure(
                 spec -> {
                   SslProvider.Builder builder = spec.sslContext(sslContext);
-                });
-    // .wiretap(true);
+                })
+        /*
+        .wiretap(
+            "reactor.netty.http.client.HttpClient",
+            LogLevel.INFO,
+            AdvancedByteBufFormat.TEXTUAL)*/ ;
     return WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient)).build();
   }
 }

@@ -2,6 +2,7 @@ package com.softvarivm.pocs.webclient.service;
 
 import com.softvarivm.pocs.webclient.entities.ProblemDetails;
 import java.time.Duration;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -20,12 +21,15 @@ public class StupidService {
   private volatile String instance;
   private volatile int errSc;
 
+  private final AtomicInteger pendingResponsesCtr = new AtomicInteger();
+
   public StupidService(@Qualifier("webClientSslTrustAllCerts") final WebClient wc) {
     webClient = wc;
   }
 
   public Mono<Object> saySomething(final String scenario) {
     LOG.info("Entering service to fetch remote resources with WebClient (scenario '{}')", scenario);
+    pendingResponsesCtr.incrementAndGet();
     instance = String.format("/mock/%s", scenario);
     return webClient
         .get()
@@ -37,6 +41,12 @@ public class StupidService {
             HttpStatusCode::is5xxServerError, response -> handleServerErrors(response.statusCode()))
         .bodyToMono(Object.class)
         .doOnError(err -> LOG.info("Error Occurred: {}", err.getMessage()))
+        .doOnSuccess(
+            b ->
+                LOG.info(
+                    "Successful response arrived: {}. There are {} requests waiting for an answer",
+                    b,
+                    pendingResponsesCtr.decrementAndGet()))
         .retryWhen(
             Retry.backoff(3, Duration.ofMillis(500L))
                 .filter(t -> t instanceof ServiceRetryErrException))
@@ -44,6 +54,7 @@ public class StupidService {
   }
 
   private Mono<? extends Throwable> handleClientErrors(final HttpStatusCode statusCode) {
+    pendingResponsesCtr.decrementAndGet();
     errSc = statusCode.value();
     final HttpStatus httpSc = HttpStatus.resolve(statusCode.value());
     if (httpSc == null) {
@@ -62,6 +73,7 @@ public class StupidService {
   }
 
   private Mono<? extends Throwable> handleServerErrors(final HttpStatusCode statusCode) {
+    pendingResponsesCtr.decrementAndGet();
     errSc = statusCode.value();
     final HttpStatus httpSc = HttpStatus.resolve(statusCode.value());
     if (httpSc == null) {
@@ -91,5 +103,9 @@ public class StupidService {
     p.setCause(t.getMessage() != null ? t.getMessage() : null);
     p.setDetail("WireMock was told to fail in this case: you got what you mocked");
     return p;
+  }
+
+  int getPendingRequestsCounter() {
+    return pendingResponsesCtr.get();
   }
 }
