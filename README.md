@@ -8,10 +8,14 @@ While keeping it simple, the service using `WebClient` implements retries, error
 how to peek into the reactive sequence of events along the process of sending a request by making use of reactive
 operators.
 
+For more information, refer to
+[Spring documentation about WebClient](https://docs.spring.io/spring-framework/reference/web/webflux-webclient.html).
+WebClient is part of [Spring Webflux](https://docs.spring.io/spring-framework/reference/web/webflux.html), Spring's reactive-stack web framework.
+
 ## API
 
-The service exposes an API that communicates with [WIREMOCK Cloud](https://app.wiremock.cloud/), where the answers to
-the requests sent to this service can be stubbed. Next figure represents shows the setup:
+The service exposes an API that communicates with [WIREMOCK Cloud](https://app.wiremock.cloud/), where answers to
+ requests sent to this service, and redirected to WIREMOCK, can be stubbed. Next figure shows the setup:
 
 ![Setup](./doc/images/setup.png "Setup")
 
@@ -27,7 +31,7 @@ instance, prior sending a http request to WIREMOCK Cloud.
 
 The Wiremock Cloud instance should be configured in this way, since the endpoints are hard-coded:
 
-* `/mock/ok`, to reply with http status code 200 and with any jason payload in the body, or no body, if you prefer.
+* `/mock/ok`, to reply with http status code 200 and any jason payload in the body, or without body if you prefer.
 * `/mock/fail`, to replay with any faulty status code you want to test. Every time you want to test how the service
 behaves on different http status codes, the WIREMOCK stub for this endpoint has to be modified accordingly.
 
@@ -37,9 +41,9 @@ See [Getting Started](https://docs.wiremock.io/getting-started/) section on WIRE
 
 Tests are intended to demo three major aspects when dealing with reactive code:
 
-1. The differences between `block()` and `subscribe()` or, in other words: "to block, or not to block, that is the
-question".
-2. Triggering the reactive flow with `subscribe()` and ways to provide callbacks in the subscription to handle both
+1. The differences between `block()` and `subscribe()` or, in other words: "to block, or not to block", because that
+is the question.
+2. Triggering the reactive flow with `subscribe()`, and ways to provide callbacks in the subscription to handle both
 successful and unsuccessful completion of the reactive flow.
 3. Common errors and strategies to test asynchronous code.
 
