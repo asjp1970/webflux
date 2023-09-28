@@ -1,5 +1,6 @@
 package com.softvarivm.pocs.webclient.service;
 
+import com.softvarivm.pocs.webclient.configuration.GeneralConfiguration;
 import com.softvarivm.pocs.webclient.entities.ProblemDetails;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -13,6 +14,24 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.util.retry.Retry;
 
+/**
+ * This service uses {@link WebClient} to send a http GET operation to a remote service. The {@link
+ * WebClient} is a bean injected, and it is configured in {@link GeneralConfiguration}.<br>
+ * The remote service is an instance of <a href="https://app.wiremock.cloud/">WireMock Cloud</a>
+ * programmed like this:
+ *
+ * <ul>
+ *   <li>url {@code /mock/ok} will return a {@code 201} with some nice body
+ *   <li>url {@code /mock/fail} will return whatever error is configured in WireMock on cloud
+ * </ul>
+ *
+ * This service retries up to {@link #MAX_RETRIES} in case any of the following situations occur:
+ *
+ * <ul>
+ *   <li>the response comes with http status code 500 SERVER_ERROR
+ *   <li>the response comes with http status code 503 SERVICE_UNAVAILABLE
+ * </ul>
+ */
 @Service
 public class StupidService {
   private static final Logger LOG = LogManager.getLogger(StupidService.class);
@@ -22,14 +41,21 @@ public class StupidService {
   private volatile int errSc;
 
   private final AtomicInteger pendingResponsesCtr = new AtomicInteger();
+  private static final int MAX_RETRIES = 3;
 
   public StupidService(@Qualifier("webClientSslTrustAllCerts") final WebClient wc) {
     webClient = wc;
   }
 
+  /**
+   * send a http GET operation to a remote service.
+   *
+   * @param scenario
+   * @return a {@link Mono} wrapping the body of the response received, or a {@link Throwable}
+   *     representing the error returned.
+   */
   public Mono<Object> saySomething(final String scenario) {
     LOG.info("Entering service to fetch remote resources with WebClient (scenario '{}')", scenario);
-    pendingResponsesCtr.incrementAndGet();
     instance = String.format("/mock/%s", scenario);
     return webClient
         .get()
@@ -40,21 +66,31 @@ public class StupidService {
         .onStatus(
             HttpStatusCode::is5xxServerError, response -> handleServerErrors(response.statusCode()))
         .bodyToMono(Object.class)
+        .doFirst(pendingResponsesCtr::incrementAndGet)
         .doOnError(err -> LOG.info("Error Occurred: {}", err.getMessage()))
-        .doOnSuccess(
-            b ->
-                LOG.info(
-                    "Successful response arrived: {}. There are {} requests waiting for an answer",
-                    b,
-                    pendingResponsesCtr.decrementAndGet()))
+        .doOnSuccess(b -> LOG.info("Successful response arrived with body: {}", b))
         .retryWhen(
-            Retry.backoff(3, Duration.ofMillis(500L))
-                .filter(t -> t instanceof ServiceRetryErrException))
-        .onErrorResume(err -> Mono.just(createProblemDetails(err)));
+            Retry.backoff(MAX_RETRIES, Duration.ofMillis(500L))
+                .filter(t -> t instanceof ServiceRetryErrException)
+                // takes care of keeping the balance of pending requests waiting for an answer in
+                // every retry
+                .doAfterRetry(retrySignal -> pendingResponsesCtr.decrementAndGet()))
+        .doFinally(
+            // decrement the counter for the first request pending og and answer (and the only one
+            // if there were no retries)
+            signalType -> {
+              LOG.info(
+                  "There are {} requests waiting for an answer",
+                  pendingResponsesCtr.decrementAndGet());
+            })
+        .onErrorResume(
+            err -> {
+              LOG.info("Error: {}", err.getMessage());
+              return Mono.just(createProblemDetails(err));
+            });
   }
 
   private Mono<? extends Throwable> handleClientErrors(final HttpStatusCode statusCode) {
-    pendingResponsesCtr.decrementAndGet();
     errSc = statusCode.value();
     final HttpStatus httpSc = HttpStatus.resolve(statusCode.value());
     if (httpSc == null) {
@@ -73,7 +109,6 @@ public class StupidService {
   }
 
   private Mono<? extends Throwable> handleServerErrors(final HttpStatusCode statusCode) {
-    pendingResponsesCtr.decrementAndGet();
     errSc = statusCode.value();
     final HttpStatus httpSc = HttpStatus.resolve(statusCode.value());
     if (httpSc == null) {
@@ -105,7 +140,9 @@ public class StupidService {
     return p;
   }
 
+  // VisibleForTesting
   int getPendingRequestsCounter() {
+    LOG.info("Counter of pending responses is: {}", pendingResponsesCtr.get());
     return pendingResponsesCtr.get();
   }
 }

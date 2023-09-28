@@ -29,7 +29,7 @@ public class GeneralConfiguration {
   @Value("${service.remote.httpsPort}")
   private int httpsPort;
 
-  public static final int TIMEOUT = 1000;
+  public static final int TIMEOUT = 500;
 
   @Bean("webClientNoSsl")
   public WebClient webClientWithTimeout() {
@@ -65,7 +65,7 @@ public class GeneralConfiguration {
         /*
         .wiretap(
             "reactor.netty.http.client.HttpClient",
-            LogLevel.INFO,
+            LogLevel.DEBUG,
             AdvancedByteBufFormat.TEXTUAL)*/ ;
     return WebClient.builder().clientConnector(new ReactorClientHttpConnector(httpClient)).build();
   }
